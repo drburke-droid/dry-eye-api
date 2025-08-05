@@ -13,16 +13,28 @@ app.get('/api/dei', async (req, res) => {
   }
 
   try {
+    // --- WEATHER DATA ---
     const weatherRes = await fetch(`https://api.weatherapi.com/v1/current.json?key=${weatherAPI}&q=Calgary`);
     const weather = await weatherRes.json();
+    const humidity = weather.current.humidity;
+    const wind = weather.current.wind_kph;
 
+    // --- AIR QUALITY (PM2.5) ---
     const aqiRes = await fetch(`https://api.airvisual.com/v2/nearest_city?key=${iqairAPI}&lat=51.0447&lon=-114.0719`);
     const aqi = await aqiRes.json();
+    const pm25 = aqi.data.current.pollution.pm25;
+
+    // --- DRY EYE INDEX CALC ---
+    // Higher wind and PM2.5 → ↑ index, Higher humidity → ↓ index
+    const dryEyeIndex = Math.min(10,
+      (0.04 * wind) + (0.15 * pm25) + (0.2 * (100 - humidity) / 100 * 10)
+    );
 
     res.json({
-      humidity: weather.current.humidity,
-      wind: weather.current.wind_kph,
-      pm25: aqi.data.current.pollution.pm25
+      humidity,
+      wind,
+      pm25,
+      dryEyeIndex: parseFloat(dryEyeIndex.toFixed(1))
     });
   } catch (err) {
     console.error(err);
