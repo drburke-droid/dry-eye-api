@@ -5,51 +5,45 @@ require('dotenv').config();
 const app = express();
 
 app.get('/api/dei', async (req, res) => {
-  const weatherAPI = process.env.WEATHER_API_KEY;
-  const iqairAPI = process.env.IQAIR_API_KEY;
+  const tempestToken = process.env.TEMPEST_TOKEN;
+  const stationId = process.env.TEMPEST_STATION_ID;
 
-  if (!weatherAPI || !iqairAPI) {
-    return res.status(500).json({ error: 'Missing API keys' });
+  if (!tempestToken || !stationId) {
+    return res.status(500).json({ error: 'Missing Tempest token or station ID' });
   }
 
   try {
-    // --- WEATHER DATA ---
-    const weatherRes = await fetch(`https://api.weatherapi.com/v1/current.json?key=${weatherAPI}&q=Calgary`);
-    const weather = await weatherRes.json();
-    const humidity = weather.current.humidity;
-    const wind = weather.current.wind_kph;
+    const url = `https://swd.weatherflow.com/swd/rest/observations/station/${stationId}?token=${tempestToken}`;
+    const tempestRes = await fetch(url);
+    const data = await tempestRes.json();
 
-    // --- AIR QUALITY ---
-    let pm25 = null;
-    const aqiRes = await fetch(`https://api.airvisual.com/v2/nearest_city?key=${iqairAPI}&lat=51.0447&lon=-114.0719`);
-    const aqi = await aqiRes.json();
-
-    if (aqi.status === "success" && aqi.data?.current?.pollution?.pm25 !== undefined) {
-      pm25 = aqi.data.current.pollution.pm25;
+    const obs = data?.obs?.[0];
+    if (!obs) {
+      return res.status(500).json({ error: 'No observation data available from Tempest' });
     }
 
-    // --- DEI CALCULATION ---
-    let dryEyeIndex = (
-      (0.04 * wind) +
-      (pm25 !== null ? 0.15 * pm25 : 0) +
-      (0.2 * (100 - humidity) / 100 * 10)
-    );
+    // Extract relevant fields
+    const humidity = obs.humidity;
+    const windKph = obs.wind_avg * 3.6; // m/s → kph
 
-    dryEyeIndex = Math.min(10, dryEyeIndex);
+    // Dry Eye Index calculation
+    const dryEyeIndex = Math.min(10,
+      (0.04 * windKph) + (0.2 * (100 - humidity) / 100 * 10)
+    );
 
     res.json({
       humidity,
-      wind,
-      pm25: pm25 !== null ? pm25 : "unavailable",
+      wind: parseFloat(windKph.toFixed(1)),
       dryEyeIndex: parseFloat(dryEyeIndex.toFixed(1))
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch data', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch Tempest data', details: err.message });
   }
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log('Dry Eye Index API is running...');
+  console.log('Dry Eye Index API (Tempest) is running...');
 });
 
