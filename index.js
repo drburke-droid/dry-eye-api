@@ -18,17 +18,17 @@ app.get('/api/dei', async (req, res) => {
     const data = await tempestRes.json();
 
     const obs = data?.obs?.[0];
-    if (!obs) {
-      return res.status(500).json({ error: 'No observation data available from Tempest' });
+    if (!obs || obs.relative_humidity === undefined || obs.wind_avg === undefined) {
+      return res.status(500).json({ error: 'Incomplete data from Tempest API' });
     }
 
-    // Extract relevant fields
-    const humidity = obs.humidity;
-    const windKph = obs.wind_avg * 3.6; // m/s → kph
+    const humidity = obs.relative_humidity;
+    const windKph = obs.wind_avg * 3.6; // Convert m/s to kph
 
-    // Dry Eye Index calculation
+    // Dry Eye Index formula: higher wind + lower humidity = higher DEI
     const dryEyeIndex = Math.min(10,
-      (0.04 * windKph) + (0.2 * (100 - humidity) / 100 * 10)
+      (0.04 * windKph) +
+      (0.2 * (100 - humidity) / 100 * 10)
     );
 
     res.json({
@@ -38,12 +38,12 @@ app.get('/api/dei', async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error fetching Tempest data:', err);
     res.status(500).json({ error: 'Failed to fetch Tempest data', details: err.message });
   }
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log('Dry Eye Index API (Tempest) is running...');
+  console.log('✅ Dry Eye Index API (Tempest) is running...');
 });
 
